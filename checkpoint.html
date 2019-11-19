@@ -55,11 +55,76 @@
     <div class="container">
       <div class="row">
         <div class="col-lg-8 mx-auto">
-          <h2>Checkpoint Report</h2>
-          <p class="lead"> Coming soon</p>
+          <h2>Summary of work so far and preliminary results</h2>
+          <p class="lead"> Our project involves working with the existing codebase of the Terrier database and improving the performance of the Scan() function. Our first step was to setup the database locally and ensure that we can replicate its expected performance on our local machines. Subsequently, we needed to write benchmarks to highlight the problem that we are trying to solve. The preliminary benchmarks we created involve populating a dummy database instance with 10 million data elements and then proceeding to Scan() through them. <br/><br/>
+
+          In order to evaluate and benchmark the performance of multiple threads, we write different benchmarks using (incrementally) more threads. This would allow us to see how the workload scales across the number of threads. Since we our workload involves scanning a list of database blocks, the task is inherently sequential. One way to distribute the workload could be to reduce the size of the items in the database proportional to the number of threads and each thread scans the entire list. While this would ensure the number of elements scanned is the same as the case of a single thread, a more intuitive approach is allowing each thread to Scan() through the entire list. As a result, a benchmark running 4 threads would be doing 4x as much work as that running on a single thread. Our task then becomes reducing the run-time for each thread to be the same as a scenario with only a single thread, i.e, achieve a 100% work efficiency. The baseline numbers for the project are below. The numbers provided are averaged over 5 runs of the benchmarks.
+        </p>
+        <img src="./t1.png"><br/><br/>
+        <p class="lead">
+          From the results above, we find that while increasing the number of threads results into more work done, we observe that the efficiency is not ideal. In other words, doing 4x the amount of work requires more than the time needed by the baseline conditions, and we are able to process ~3x the number of items as opposed to the ideal circumstances where we would be processing 4x as many. As a result, we are successful in being able to highlight the concurrency overheads prevalent in the system at the moment.<br/><br/>
+
+          Next, we try to highlight the source of these overheads. For the purpose of establishing an upper bound and to narrow down the location of these overheads, we remove a (concurrent) part of the workload and remove locks on the database iterator. This experiment would, ideally, reduce the time taken for each benchmark to be the same, i.e, it would remove the overhead associated with each of the concurrent executions since we remove the (contested) workload itself. The results are below:
+        </p>
+        <img src="./t2.png"><br/><br/>
+        <p class="lead">
+          These results are a lot closer to the ideal circumstances in terms of the work efficiency and time taken by each benchmark. This shows that the overheads associated with the concurrent parts of the system as well as the locks associated with the database iterators introduce a large concurrency overhead which impacts the performance.<br/><br/>
+
+          One of our proposed changes to the system included repositioning the iterator latch associated with incrementing the database iterator to another part of the function in an attempt to remove the overhead of unnecessary acquires. To establish an upper bound for the effectiveness of the function, we remove this latch entirely and run our benchmarks again. We find a small but positive effect on the results from the benchmark (table below).           
+        </p>        
+        <img src="./t3.png"><br/><br/>
+        <p class="lead">
+            We then reposition the latch and repeat the same experiments. We find that while there is an improvement in performance, the improvement is a little worse than that in the table above. This is inline with our expectations since the above table is generated without a latch at all. <br/><br/>
+
+            We do not, however, present the results from this method as a part of this report. After experimenting with the unittests present in the system, we find that there aren’t enough unit tests which test the concurrent read/insert functions that we are modifying. As a result, it is possible to introduce correctness issues via race conditions and still not be able to detect them. Thus, our task is now to first write such a test to validate our current (and future approaches). The updated schedule with this change is provided at the end of this report.          
+        </p>        
+        <br/><br/>
+        <h2>What do you plan to show at the poster session? Will it be a demo? Will it be a graph?</h2>
+        <p class="lead">
+          We will be presenting graphs which highlight the effectiveness of using multiple cores as opposed to the single core baseline performance. The metrics we use for these plots will include relative speedup and efficiency (in terms of number of processed items).
+        </p>
         </div>
       </div>
     </div>
+  </section>
+
+  <section id="two" class="bg-light">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 mx-auto">
+        <h2>List the issues that concern you the most. Are there any remaining unknowns (things you simply don’t know how to solve, or resource you don’t know how to get) or is it just a matter of coding and doing the work? If you do not wish to put this information on a public web site you are welcome to email the staff directly.</h2>
+          <ul>
+            <li class="lead">Familiarizing ourselves with the project code base and making preliminary changes took us a lot longer than expected; we underestimated the amount of time needed to get familiar with (relevant parts of ) the project codebase. This was especially true when we would make changes to the source code and we would break or change the behavior in an unexpected manner. As a result, the actual required development time is exceeding the expected development time. Although we are familiar with the segments of code we are working with now, we believe this may be a recurring problem when we make more elaborate changes to the codebase or are trying to analyze different parts of  the codebase.</li>
+            <li class="lead">The current unit tests in the system do not simulate a race condition environment. As a result, to be entirely certain that our changes with locks do not hamper the correctness of the system, we need to write some unit tests which specifically check for race conditions. Finding a way to test these conditions is essential since all our work would be meaningless if the system is unable to function concurrently (correctly) after the changes we make.</li>
+          </ul>
+        <h2>Describe how you are doing with respect to the goals and deliverables stated in your proposal. Do you still believe you will be able to produce all your deliverables? If not, why? What about the ”nice to haves”? In your checkpoint writeup we want a new list of goals that you plan to hit for the poster session.</h2>
+        <p class="lead">As mentioned in the concerns above, we spent a lot more time than anticipated in trying to understand the codebase we are working with. Since neither of us is directly involved in the development of this database, the codebase is completely unfamiliar to us which is a source of unexpected delays. If we are unable to meet our deliverables, we believe it would most likely be due to this reason. At the moment, we are currently a little behind our planned timeline (from the proposal) but we still feel confident that we will be able to meet the goals we specified in our proposal. Goals from our proposal below:</p>
+        <ul>
+          <li class="lead" style="text-decoration: line-through;">We plan to produce a baseline performance (i.e, the current performance of the system) and plan to plot the performances we obtain from our different approaches in the form of a speedup graph. (Completed)</li>
+          <li class="lead"> We plan to find ways to get around the high synchronization overhead that is currently in place; we hope that our lock free implementations will be successful (i.e ensure correctness) and will significantly improve the performance of the system. We also hope to see far fewer cache line evictions.</li>
+          <li class="lead">We plan to measure the impact of our updated methods on other parts of the system and hope to identify other (potential) inefficiencies in the system. We also plan to conduct a higher-level analysis to evaluate where the speedup we obtain is coming from</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  </section>
+
+    <section id="two">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg-8 mx-auto">
+          <h2>Schedule</h2>
+          <ul>
+            <li class="lead">Week of November 18th (Wed-Sun): Write and validate unit tests which introduce race conditions in the system; we will heavily rely on these unit tests for establishing correctness in the system after the modifications we make to it (Shrey). Implement building a static copy for every Scan() call to prevent locking overhead. With help if needed, set up a Linux box to be able to run perf with events on the function. (Paulina)</li>
+            <li class="lead">Week of November 25th (Mon-Thurs): ; Incorporate and test the two methods we have implemented so far, i.e, the static copying and modified latch acquiring in the database iterator. Use the updated unit tests and benchmarks to test for both correctness and change in performance.</li>
+            <li class="lead">Week of November 25th (Thurs-Sun): Research and brainstorm potentially applicable lock-free paradigms and concurrent data structures; experiment with different supported libraries (eg. TBB, Boost, Folly)  (one each between Shrey and Paulina)</li>
+            <li class="lead">Week of December 2nd (Mon-Thurs): Implement the respective algorithms/data structures and evaluate for correctness and change in performance.  Evaluate results and find other sources of overhead, if any.</li>
+            <li class="lead">Week of December 2nd (Thurs-Sun): Buffer for any overflow from the previous weeks. Further, design visuals including graphic representations of each solution and graphs that demonstrate the performance metrics and analysis. Combine previous performance analysis, reflecting on what was learned along the way. Write the final report and design the eight 8.5x11’’ pages that will be used at the poster session.</li>
+            <li class="lead">December 9th: Project due</li>
+          </ul>
+        </div>
+      </div>
+    </div> 
   </section>
 
   <!-- Footer -->
